@@ -1,108 +1,122 @@
 # import the necessary packages
-import argparse
+import math
+from typing import Union
+
 import cv2
 import imutils
-import math
 import numpy as np
-import time
-from collections import deque
-from imutils.video import VideoStream
 
 # construct the argument parse and parse the arguments
+cv2.namedWindow('trackbars')
+radius_trackbar = 5
 
 
-ap = argparse.ArgumentParser()
-ap.add_argument("-v", "--video",
-                help="path to the (optional) video file")
-ap.add_argument("-b", "--buffer", type=int, default=64,
-                help="max buffer size")
-args = vars(ap.parse_args())
+def callback(_):
+    pass
 
-# define the lower and upper boundaries of the "green"
-# ball in the HSV color space, then initialize the
-# list of tracked points
+
+cv2.createTrackbar('radius_trackbars', 'trackbars', 0, 10, callback)
+
 redLower = (0, 121, 0)
 redUpper = (9, 255, 255)
-pts = deque(maxlen=args["buffer"])
+blueLower = (0, 104, 0)
+blueUpper = (180, 255, 255)
+vs = cv2.VideoCapture(0)
+
+
 # if a video path was not supplied, grab the reference
 # to the webcam
-if not args.get("video", False):
-    vs = VideoStream(src=0).start()
-# otherwise, grab a reference to the video file
-else:
-    vs = cv2.VideoCapture(args["video"])
-# allow the camera or video file to warm up
-time.sleep(2.0)
+def is_circle(cnt: np.array, minimum: Union[float, int]) -> bool:
+    ratio = circle_ratio(cnt)
+    return minimum <= ratio <= 1
 
-# keep looping
-while True:
+
+def filter_contours(contours, hierarchy):
+    correct_contours = []
+
+    if contours is not None:
+        for cnt in contours:
+            if len(cnt) < 50:
+                continue
+            x, y, w, h = cv2.boundingRect(cnt)
+            ratio = w / h
+            area_circle_from_rect = math.pi * ((w / 2) ** 2)
+            _, radius = cv2.minEnclosingCircle(cnt)
+
+            area_circle = math.pi * (radius ** 2)
+
+            area_ratio = area_circle / area_circle_from_rect
+
+            if 0.75 < ratio < 1.25 and 0.75 < area_ratio < 1.25 and radius > 5:
+                correct_contours.append(cnt)
+
+    return correct_contours
+
+
+while cv2.waitKey(1) & 0xFF != 27:
     # grab the current frame
-    frame = vs.read()
-    # handle the frame from VideoCapture or VideoStream
-    frame = frame[1] if args.get("video", False) else frame
-    # if we are viewing a video and we did not grab a frame,
-    # then we have reached the end of the video
-    if frame is None:
+    has_frame, frame = vs.read()
+
+    if not has_frame:
         break
-    # resize the frame, blur it, and convert it to the HSV
-    # color space
-    frame = imutils.resize(frame, width=600)
+
     blurred = cv2.GaussianBlur(frame, (11, 11), 0)
     hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
-    # construct a mask for the color "green", then perform
-    # a series of dilations and erosions to remove any small
-    # blobs left in the mask
-    mask = cv2.inRange(hsv, redLower, redUpper)
+
+    isBlue = False
+
+    if isBlue:
+        mask = cv2.inRange(hsv, blueUpper, blueLower)
+    else:
+        mask = cv2.inRange(hsv, redLower, redUpper)
+
     mask = cv2.erode(mask, None, iterations=2)
     mask = cv2.dilate(mask, None, iterations=2)
-    # find contours in the mask and initialize the current
-    # (x, y) center of the ball
+    cv2.imshow("hsv", cv2.bitwise_and(frame, frame, mask=mask))
+
     cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL,
                             cv2.CHAIN_APPROX_SIMPLE)
     cnts = imutils.grab_contours(cnts)
     center = None
+
     # only proceed if at least one contour was found
     if len(cnts) > 0:
-        # find the largest contour in the mask, then use
-        # it to compute the minimum enclosing circle and
-        # centroid
-        c = max(cnts, key=cv2.contourArea)
-        ((x, y), radius) = cv2.minEnclosingCircle(c)
-        M = cv2.moments(c)
-        center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
-        # only proceed if the radius meets a minimum size
-        if radius > 8:
-            area = cv2.contourArea(c)
-            circle_area = math.pi * radius ** 2
-            solidity = float(area) / circle_area
-            if solidity > 0.8:
-                # draw the circle and centroid on the frame,
-                # then update the list of tracked points
-                cv2.circle(frame, (int(x), int(y)), int(radius),
-                           (0, 255, 255), 2)
-            # cv2.circle(frame, center, 5, (0, 0, 255), -1)
-    # update the points queue
-    # pts.appendleft(center)
-    # loop over the set of tracked points
-    # for i in range(1, len(pts)):
-    #    # if either of the tracked points are None, ignore
-    #    # them
-    #    if pts[i - 1] is None or pts[i] is None:
-    #        continue
-    #    # otherwise, compute the thickness of the line and
-    #    # draw the connecting lines
-    #    thickness = int(np.sqrt(args["buffer"] / float(i + 1)) * 2.5)
-    #    cv2.line(frame, pts[i - 1], pts[i], (0, 0, 255), thickness)
-    # show the frame to our screen
-    cv2.imshow("Frame", frame)
-    key = cv2.waitKey(1) & 0xFF
-# if the 'q' key is pressed, stop the loop
+        for c in cnts:
+            ((x, y), radius) = cv2.minEnclosingCircle(c)
+            M = cv2.moments(c)
+            center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+            # only proceed if the radius meets a minimum size
 
-# if we are not using a video file, stop the camera video stream
+            if radius > radius_trackbar:
+                area = cv2.contourArea(c)
+                circle_area = math.pi * radius ** 2
+                solidity = float(area) / circle_area
+                # _, _, w, h = cv2.boundingRect(c)
+                # aspect_ratio = float(w) / h
+
+                if solidity > 0.8:
+                    def draw_contours(filtered_contours, original):
+                        for cnt in filtered_contours:
+                            (a, b), radius = cv2.minEnclosingCircle(cnt)
+                            center = (int(a), int(b))
+                            cv2.circle(original, center, int(radius), (255, 255, 0), 5)
+                            distance = utils.distance(constants.FOCAL_LENGTHS['lifecam'],
+                                                      constants.GAME_PIECE_SIZES['fuel']['diameter'],
+                                                      radius * 2)
+                            cv2.putText(original, str(int(distance * 100)), (int(a), int(b + 2 * radius)),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 2,
+                                        (0, 0, 0), 3)
+
+
+                    cv2.circle(frame, (int(x), int(y)), int(radius),
+                               (0, 255, 255), 2)
+
+    cv2.imshow("frame", frame)
+
 if not args.get("video", False):
     vs.stop()
-# otherwise, release the camera
+
 else:
     vs.release()
-# close all windows
+
 cv2.destroyAllWindows()
