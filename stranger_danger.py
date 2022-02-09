@@ -29,6 +29,19 @@ def get_yaw(horizontal_focal_length, x_pixels):
     return math.degrees(math.atan((x_pixels - 320) / horizontal_focal_length))
 
 
+def split_cargos(cnt):
+    if len(cnt) == 1:
+        return
+    print(cnt)
+    hull = cv2.convexHull(cnt, returnPoints=False)
+    if hull is not None:
+        # print(cv2.isContourConvex(hull))
+        hull[::-1].sort(axis=0)
+        defects = cv2.convexityDefects(cnt, hull)
+        if defects is not None:
+            # print(defects, len(defects))
+            pass
+
 def update_trackbars():
     global radius_trackbar, is_blue
 
@@ -66,7 +79,7 @@ cv2.createTrackbar('max_h', 'trackbars', redUpper[0], 180, callback)
 cv2.createTrackbar('max_s', 'trackbars', redUpper[1], 255, callback)
 cv2.createTrackbar('max_v', 'trackbars', redUpper[2], 255, callback)
 
-vs = cv2.VideoCapture(0)
+vs = cv2.VideoCapture(2)
 vs.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 vs.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
@@ -94,12 +107,12 @@ while cv2.waitKey(1) & 0xFF != 27:
 
     cv2.imshow("hsv", cv2.bitwise_and(frame, frame, mask=mask))
 
-    contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL,
-                                   cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     # only proceed if at least one contour was found
     if len(contours) > 0:
         for contour in contours:
+            split_cargos(contour)
             area = cv2.contourArea(contour)
             if area < 300:
                 continue
@@ -123,8 +136,8 @@ while cv2.waitKey(1) & 0xFF != 27:
 
                     pitch = get_pitch(ver_focal, cY)
                     yaw = get_yaw(hor_focal, cX)
-                    cv2.putText(frame, f"pitch: {pitch}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, (209, 80, 0, 255), 3)
-                    cv2.putText(frame, f"yaw: {yaw}", (40, 50), cv2.FONT_HERSHEY_SIMPLEX, (209, 80, 0, 255), 3)
+                    # cv2.putText(frame, f"pitch: {pitch:2}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, (209, 80, 255), 3)
+                    # cv2.putText(frame, f"yaw: {yaw:2}", (40, 50), cv2.FONT_HERSHEY_SIMPLEX, (209, 80, 255), 3)
 
     cv2.imshow("frame", frame)
 
